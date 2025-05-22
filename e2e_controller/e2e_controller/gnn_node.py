@@ -23,6 +23,10 @@ class GNNNode(Node):
         self.declare_parameter('max_range', 30.0)
         self.declare_parameter('downsample_num', 1081)
         self.declare_parameter('distance_threshold', 1.0)
+        self.declare_parameter('model_input_dim', 2)
+        self.declare_parameter('model_hidden_dim', 64)
+        self.declare_parameter('model_output_dim', 2)
+
 
         self.load_parameters()
 
@@ -49,32 +53,61 @@ class GNNNode(Node):
         self.downsample_num = self.get_parameter('downsample_num').get_parameter_value().integer_value
         self.distance_threshold = self.get_parameter('distance_threshold').get_parameter_value().double_value
 
+        # モデル構造のパラメータ
+        self.model_input_dim = self.get_parameter('model_input_dim').get_parameter_value().integer_value
+        self.model_hidden_dim = self.get_parameter('model_hidden_dim').get_parameter_value().integer_value
+        self.model_output_dim = self.get_parameter('model_output_dim').get_parameter_value().integer_value
+
+
     def on_param_change(self, params):
         success = True
         reason = ""
+        reload_needed = False
+
         for param in params:
             if param.name == 'model_path':
                 try:
-                    self.model = self.load_model(param.value)
                     self.model_path = param.value
-                    self.get_logger().info(f"[RELOADED] Model from {param.value}")
+                    reload_needed = True
                 except Exception as e:
                     success = False
-                    reason += f" Model reload failed: {e}"
+                    reason += f" Model path update failed: {e}"
             elif param.name == 'max_range':
                 self.max_range = param.value
             elif param.name == 'downsample_num':
                 self.downsample_num = param.value
             elif param.name == 'distance_threshold':
                 self.distance_threshold = param.value
+            elif param.name == 'model_input_dim':
+                self.model_input_dim = param.value
+                reload_needed = True
+            elif param.name == 'model_hidden_dim':
+                self.model_hidden_dim = param.value
+                reload_needed = True
+            elif param.name == 'model_output_dim':
+                self.model_output_dim = param.value
+                reload_needed = True
+
+        if reload_needed:
+            try:
+                self.model = self.load_model(self.model_path)
+                self.get_logger().info(f"[RELOADED] Model from {self.model_path}")
+            except Exception as e:
+                success = False
+                reason += f" Model reload failed: {e}"
 
         return SetParametersResult(successful=success, reason=reason)
 
     def load_model(self, path):
-        model = LidarGCN(input_dim=2, hidden_dim=64, output_dim=2).to(self.device)
+        model = LidarGCN(
+            input_dim=self.model_input_dim,
+            hidden_dim=self.model_hidden_dim,
+            output_dim=self.model_output_dim
+        ).to(self.device)
         model.load_state_dict(torch.load(path, map_location=self.device))
         model.eval()
         return model
+
 
     def scan_callback(self, msg):
         ranges = np.array(msg.ranges, dtype=np.float32)
