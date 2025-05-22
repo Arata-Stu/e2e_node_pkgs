@@ -2,13 +2,18 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDrive
+from rcl_interfaces.msg import SetParametersResult
 import torch
 import numpy as np
-from rcl_interfaces.msg import SetParametersResult
+import os
 
 class CNNNode(Node):
     def __init__(self):
         super().__init__('lidar_drive_node')
+
+        # Device設定（CUDA優先）
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.get_logger().info(f"[DEVICE] Using device: {self.device}")
 
         # Declare parameters
         self.declare_parameter('model_path', 'checkpoint.pt')
@@ -18,7 +23,7 @@ class CNNNode(Node):
         # Load parameters
         self.load_parameters()
 
-        # Load model
+        # Load model to device
         self.model = self.load_model(self.model_path)
 
         # Register dynamic param callback
@@ -66,29 +71,41 @@ class CNNNode(Node):
                 self.get_logger().info(f"[UPDATED] downsample_num: {self.downsample_num}")
 
         return SetParametersResult(successful=success, reason=reason)
-    
-    def scan_callback(self, msg):
-        # base ranges
-        full_ranges = np.array(msg.ranges, dtype=np.float32)
-        num_beams = len(full_ranges)
 
-        # 指定数に等間隔でダウンサンプリング
+    def load_model(self, path):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Model file not found: {path}")
+        model = torch.jit.load(path, map_location=self.device)
+        model.eval()
+        model.to(self.device)
+        return model
+
+    def scan_callback(self, msg):
+        full_ranges = np.array(msg.ranges, dtype=np.float32)
+        full_ranges = np.nan_to_num(full_ranges, nan=self.max_range, posinf=self.max_range)
+
+        num_beams = len(full_ranges)
+        if self.downsample_num > num_beams:
+            self.get_logger().warn("downsample_num > number of beams in scan.")
+            return
+
         indices = np.linspace(0, num_beams - 1, self.downsample_num).astype(int)
         sampled_ranges = full_ranges[indices]
 
-        # clamp & normalize
         sampled_ranges = np.clip(sampled_ranges, 0.0, self.max_range) / self.max_range
-        scan_tensor = torch.tensor(sampled_ranges).unsqueeze(0)  # shape: [1, 100]
+        scan_tensor = torch.tensor(sampled_ranges, dtype=torch.float32).unsqueeze(0).to(self.device)
 
-        # 推論
-        with torch.no_grad():
-            output = self.model(scan_tensor)
-            steer, throttle = output[0].tolist()
+        try:
+            with torch.no_grad():
+                output = self.model(scan_tensor)
+                steer, throttle = output[0].tolist()
+        except Exception as e:
+            self.get_logger().error(f"Inference failed: {e}")
+            return
 
         steer = float(np.clip(steer, -1.0, 1.0))
         throttle = float(np.clip(throttle, -1.0, 1.0))
 
-        # Publish
         drive_msg = AckermannDrive()
         drive_msg.steering_angle = steer
         drive_msg.speed = throttle
