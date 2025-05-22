@@ -79,7 +79,7 @@ class CNNNode(Node):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file not found: {path}")
         
-        model = TinyLidarNet()  # ここはユーザーのCNNアーキテクチャに合わせて変更
+        model = TinyLidarNet(input_length=self.downsample_num)  # ここはユーザーのCNNアーキテクチャに合わせて変更
         state_dict = torch.load(path, map_location=self.device)
         model.load_state_dict(state_dict)
         model.eval()
