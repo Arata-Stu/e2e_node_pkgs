@@ -11,7 +11,7 @@
     <param from="$(var cnn_node_param)"/>
     <!-- トピックのremap -->
     <remap from="/scan" to="/scan_filtered"/>
-    <remap from="/cmd_drive" to="/jetracer/cmd_drive"/>
+    <remap from="/cmd_drive" to="/ackermann_cmd"/>
   </node>
 
 
