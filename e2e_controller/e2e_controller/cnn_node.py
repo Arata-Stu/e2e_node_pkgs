@@ -66,3 +66,30 @@ class CNNNode(Node):
                 self.get_logger().info(f"[UPDATED] downsample_num: {self.downsample_num}")
 
         return SetParametersResult(successful=success, reason=reason)
+    
+    def scan_callback(self, msg):
+        # base ranges
+        full_ranges = np.array(msg.ranges, dtype=np.float32)
+        num_beams = len(full_ranges)
+
+        # 指定数に等間隔でダウンサンプリング
+        indices = np.linspace(0, num_beams - 1, self.downsample_num).astype(int)
+        sampled_ranges = full_ranges[indices]
+
+        # clamp & normalize
+        sampled_ranges = np.clip(sampled_ranges, 0.0, self.max_range) / self.max_range
+        scan_tensor = torch.tensor(sampled_ranges).unsqueeze(0)  # shape: [1, 100]
+
+        # 推論
+        with torch.no_grad():
+            output = self.model(scan_tensor)
+            steer, throttle = output[0].tolist()
+
+        steer = float(np.clip(steer, -1.0, 1.0))
+        throttle = float(np.clip(throttle, -1.0, 1.0))
+
+        # Publish
+        drive_msg = AckermannDrive()
+        drive_msg.steering_angle = steer
+        drive_msg.speed = throttle
+        self.publisher.publish(drive_msg)
