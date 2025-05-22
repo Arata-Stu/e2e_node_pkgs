@@ -7,6 +7,9 @@ import torch
 import numpy as np
 import os
 
+from .models.cnn import TinyLidarNet  # ← モデル定義を忘れずに import
+
+
 class CNNNode(Node):
     def __init__(self):
         super().__init__('lidar_drive_node')
@@ -75,7 +78,10 @@ class CNNNode(Node):
     def load_model(self, path):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file not found: {path}")
-        model = torch.jit.load(path, map_location=self.device)
+        
+        model = TinyLidarNet()  # ここはユーザーのCNNアーキテクチャに合わせて変更
+        state_dict = torch.load(path, map_location=self.device)
+        model.load_state_dict(state_dict)
         model.eval()
         model.to(self.device)
         return model
