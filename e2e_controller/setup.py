@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             # 実行可能スクリプトを定義
             'cnn_node = e2e_controller.cnn_node:main',
+            'gnn_node = e2e_controller.gnn_node:main',
         ],
     },
 )
