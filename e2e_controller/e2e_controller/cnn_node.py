@@ -110,3 +110,21 @@ class CNNNode(Node):
         drive_msg.steering_angle = steer
         drive_msg.speed = throttle
         self.publisher.publish(drive_msg)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = CNNNode()
+    
+    try:
+        rclpy.spin(node)
+    except Exception:
+        pass
+    finally:
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
